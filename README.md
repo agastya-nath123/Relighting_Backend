@@ -92,6 +92,7 @@ main.py
 server.py
 requirements.txt
 README.md
+LICENSE
 jobs/
     <generated job folders>
 ```
