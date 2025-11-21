@@ -1,6 +1,7 @@
 # **Relighting Server API**
 
 This project provides a FastAPI-based backend for image relighting using PyTorch, OpenCV, and custom depth/normal/lighting models.  
+
 It handles image uploads, runs relighting jobs, stores intermediate results, and serves the processed outputs back to the client.
 
 ## **Features**
