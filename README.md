@@ -88,7 +88,10 @@ Delete an entire job directory.
 ```
 ### Project Structure
 ```sh
+main.py
 server.py
+requirements.txt
+README.md
 jobs/
     <generated job folders>
 ```
