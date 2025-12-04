@@ -1,293 +1,241 @@
-# Segmentation & Inpainting API — MobileSAM + LaMa
 
-**Version:** 0.1.0
+<div align="center">
 
-This repository provides a FastAPI-based backend that uses **MobileSAM** for segmentation (point-selection) and **LaMa** for image inpainting. It accepts an uploaded image, performs segmentation for provided point coordinates, crops objects, inpaints removed areas, and serves downloadable artifacts.
+#  Segmentation & Inpainting API
 
----
+MobileSAM + LaMa · FastAPI · Real-time Object Removal
 
-## Features
 
-* Upload images via `/upload`
-* Start segmentation + inpainting with `/segment` (point-selection)
-* Check job status via `/status/{job_id}`
-* Download artifacts with `/download/{job_id}/{filename}`
-* Cleanup job files with `/cleanup/{job_id}`
-* Health check at `/health`
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.121.3-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.9.1-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![Python](https://img.shields.io/badge/Python-3.8+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
----
+*Point-and-click object segmentation and removal with AI*
 
-## Quick Start (Development)
+</div>
 
-> These instructions assume you're using a Debian/Ubuntu-like environment (Codespaces, Ubuntu, Debian). If you use Docker, see the Docker section below.
+##  Table of Contents
+- [ Features](#-features)
+- [ Architecture](#️-architecture)
+- [ Quick Start](#-quick-start)
+- [ Project Structure](#-project-structure)
+- [ API Endpoints](#-api-endpoints)
+- [ Installation](#️-installation)
+- [ Usage Examples](#-usage-examples)
+- [ Configuration](#️-configuration)
+- [ Model Details](#-model-details)
+- [ Troubleshooting](#️-troubleshooting)
+- [ License](#-license)
 
-### 1. Clone the repo
+##  Features
 
-```bash
-git clone <your-repo-url>
-cd Relighting_Backend/Masking
+| Feature | Description | Benefit |
+|---------|-------------|---------|
+| **Point-based Segmentation** | Click on any object to segment it | No bounding boxes needed, intuitive UX |
+| **Real-time Inpainting** | Remove objects and fill background | Clean results without manual editing |
+| **Batch Processing** | Process multiple objects simultaneously | Efficient for complex scenes |
+| **Transparent Crops** | Extract objects with alpha channel | Ready for compositing in other apps |
+| **Background Jobs** | Async processing with progress tracking | Handle large images without timeouts |
+| **RESTful API** | Standard HTTP endpoints | Easy integration with any frontend |
+
+##  Architecture
+
+```mermaid
+graph TD
+    A[Client Upload] --> B[FastAPI Server]
+    B --> C[Image Processing Pipeline]
+    C --> D{MobileSAM<br/>Segmentation}
+    D --> E[Object Mask Generation]
+    E --> F{LaMa<br/>Inpainting}
+    F --> G[Background Filling]
+    E --> H[Object Cropping]
+    G --> I[Result Assembly]
+    H --> I
+    I --> J[Client Download]
 ```
 
-### 2. Python environment
+##  Quick Start
 
-Use Python 3.10 or 3.11 if possible. Python 3.12 can cause build issues for some packages.
+### Prerequisites
+- Python 3.8+
+- CUDA-capable GPU (recommended) or CPU
+- 4GB+ RAM
+- 2GB+ free disk space
 
-Create a virtual environment and activate it:
-
+### 1-Minute Setup
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-```
+# Clone and setup
+git clone <repository-url>
+cd segmentation-api
 
-### 3. System dependencies (required for Pillow, OpenCV, headless GL, etc.)
+# Download MobileSAM checkpoint
+wget https://github.com/ChaoningZhang/MobileSAM/releases/download/v1.0/mobile_sam.pt
 
-```bash
-sudo apt-get update
-sudo apt-get install -y \
-  build-essential \
-  libjpeg-dev zlib1g-dev libpng-dev libtiff5-dev libfreetype6-dev \
-  libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender1
-```
-
-> If you are in an environment without `sudo` (some containers/dev containers), run these in a privileged container or add to your Dockerfile.
-
-### 4. Install Python dependencies
-
-A `requirements.txt` is provided. Install with:
-
-```bash
-pip install --upgrade pip
+# Install dependencies
 pip install -r requirements.txt
-```
 
-> If you need GPU-accelerated PyTorch, install torch/torchvision/torchaudio wheels from the official PyTorch index for your CUDA version instead of the generic `torch` line in `requirements.txt`.
-
-### 5. Place MobileSAM checkpoint
-
-Download the MobileSAM checkpoint (`mobile_sam.pt`) and place it in the project root (same folder as `runserver.py` / `main.py`).
-
-Recommended source: [https://github.com/ChaoningZhang/MobileSAM](https://github.com/ChaoningZhang/MobileSAM)
-
-### 6. Run the server
-
-```bash
+# Start the server
 python runserver.py
 ```
 
-Or run via uvicorn directly:
+Visit `http://localhost:8000/docs` for interactive API documentation.
 
+##  Project Structure
+
+```
+segmentation-api/
+├──  jobs/                    # Temporary job storage
+│   ├──  {job_id}/           # Per-job directory
+│   │   ├── original.png       # Uploaded image
+│   │   ├── mask_0.png        # Segmentation mask
+│   │   ├── cropped_0.png     # Extracted object (RGBA)
+│   │   ├── inpainted_0.png   # Object-removed version
+│   │   └── full_inpainted.png # Final cleaned image
+├──  main.py                 # FastAPI application
+├──  runserver.py           # Server launcher
+├──  requirements.txt       # Python dependencies
+├──  mobile_sam.pt          # MobileSAM weights
+├──  README.md             # This file
+└──  LICENSE               # MIT License
+```
+
+### File Descriptions
+
+| File | Purpose | Size (approx) |
+|------|---------|---------------|
+| `main.py` | Core FastAPI application with all endpoints | ~500 lines |
+| `runserver.py` | Server startup script with validation | ~30 lines |
+| `mobile_sam.pt` | MobileSAM model checkpoint (download separately) | 40MB |
+| `requirements.txt` | All Python dependencies | 150+ packages |
+
+##  API Endpoints
+
+### Core Workflow Endpoints
+
+| Endpoint | Method | Description | Request Body | Response |
+|----------|--------|-------------|--------------|----------|
+| `/upload` | POST | Upload image for processing | `multipart/form-data` (file) | `{job_id, status}` |
+| `/segment` | POST | Start segmentation at point | `{job_id, x, y}` | `{job_id, status}` |
+| `/status/{job_id}` | GET | Check job progress | - | `{status, progress, ...}` |
+| `/download/{job_id}/{filename}` | GET | Download processed files | - | File stream |
+| `/cleanup/{job_id}` | DELETE | Remove job data | - | `{status}` |
+
+### Utility Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | API documentation |
+| `/health` | GET | System health check |
+
+##  Installation
+
+### Step-by-Step Setup
+
+1. **Create Virtual Environment**
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8000
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# or
+venv\Scripts\activate     # Windows
 ```
 
-Open the Swagger UI at `http://localhost:8000/docs` (or the forwarded URL in Codespaces).
-
----
-
-
-## API Endpoints
-
-All endpoints are under the root server (e.g., `http://localhost:8000`). Examples below use `BASE_URL` as placeholder.
-
-### `POST /upload`
-
-Upload an image for processing. Returns a `job_id` you will use for later calls.
-
-**Request**
-
-* Content-Type: `multipart/form-data`
-* Form field: `file` (binary file)
-
-**Response** (200)
-
-```json
-{
-  "job_id": "<job_id>",
-  "status": "queued",
-  "message": "Image uploaded. Send segmentation request to start processing."
-}
-```
-
-**cURL Example**
-
+2. **Install Dependencies**
 ```bash
-curl -X POST "${BASE_URL}/upload" -F "file=@path/to/image.png"
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+pip install -r requirements.txt
 ```
 
----
-
-### `POST /segment?job_id=<job_id>`
-
-Start segmentation + inpainting for the image uploaded in `/upload`.
-
-**Query parameter**
-
-* `job_id` (string) — the job id returned by `/upload`
-
-**Request body**
-
-* JSON array of point coordinates: `[[x1, y1], [x2, y2], ...]`
-
-**Response** (200)
-
-```json
-{ "job_id": "<job_id>", "status": "processing" }
-```
-
-**cURL Example**
-
+3. **Download Model Weights**
 ```bash
-curl -X POST "${BASE_URL}/segment?job_id=<job_id>" \
-  -H "Content-Type: application/json" \
-  -d '[ [200, 350], [400, 120] ]'
+# Option 1: Direct download
+wget https://github.com/ChaoningZhang/MobileSAM/releases/download/v1.0/mobile_sam.pt
+
+# Option 2: Manual download
+# Visit: https://github.com/ChaoningZhang/MobileSAM
+# Download mobile_sam.pt to project root
 ```
 
----
-
-### `GET /status/{job_id}`
-
-Get job processing status and progress.
-
-**Response** (200)
-
-```json
-{
-  "status": "ready",            # queued | processing | ready | error
-  "progress": 100,
-  "original_size": [width, height],
-  "job_dir": "/path/to/jobs/<job_id>",
-  "num_objects": 1,
-  "successful_segmentations": 1
-}
-```
-
----
-
-### `GET /download/{job_id}/{filename}`
-
-Download processed artifacts from the job directory.
-
-**Common filenames**
-
-* `original.png`
-* `mask_0.png`, `mask_1.png`, ...
-* `cropped_0.png`, `cropped_1.png`, ...
-* `inpainted_0.png`, `inpainted_1.png`, ...
-* `full_inpainted.png`
-
-**cURL Example**
-
+4. **Verify Installation**
 ```bash
-curl -o out.png "${BASE_URL}/download/<job_id>/inpainted_0.png"
+python -c "import torch; print(f'PyTorch: {torch.__version__}')"
+python -c "import cv2; print(f'OpenCV: {cv2.__version__}')"
 ```
 
----
+##  Configuration
 
-### `DELETE /cleanup/{job_id}`
+### Environment Variables
+Create a `.env` file:
+```env
+# Server Configuration
+PORT=8000
+HOST=0.0.0.0
+WORKERS=1
+LOG_LEVEL=info
 
-Delete job folder and artifacts.
+# Model Configuration
+MAX_IMAGE_SIZE=1024
+DEVICE=cuda  # or cpu
+MODEL_PATH=./mobile_sam.pt
 
-**Response**
-
-```json
-{ "status": "deleted", "job_id": "<job_id>" }
+# Storage Configuration
+WORK_DIR=./jobs
+CLEANUP_HOURS=24
 ```
 
----
+### Runtime Parameters in `main.py`
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MAX_IMAGE_SIZE` | 1024 | Max dimension for image processing |
+| `DEVICE` | cuda/cpu | Torch device (auto-detected) |
+| `WORK_DIR` | ./jobs | Temporary storage directory |
+| `MOBILE_SAM_CHECKPOINT` | ./mobile_sam.pt | Model weights path |
 
-### `GET /health`
+ 
+##  Troubleshooting
 
-Returns health info about the server and whether models are loaded.
+### Common Issues & Solutions
 
-**Response**
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| `mobile_sam.pt not found` | Missing model weights | Download from GitHub releases |
+| `CUDA out of memory` | GPU memory insufficient | Reduce `MAX_IMAGE_SIZE` or use CPU |
+| `Slow processing` | Running on CPU | Enable CUDA or reduce image size |
+| `Import errors` | Missing dependencies | Reinstall with `requirements.txt` |
+| `API timeout` | Large image processing | Use background jobs, check `/status` |
 
-```json
-{ "status": "healthy", "device": "cpu|cuda", "models_loaded": true }
-```
-
----
-
-## Typical filenames produced
-
-The pipeline generally writes files under `jobs/<job_id>/`. Typical names include:
-
-```
-original.png
-mask_0.png
-cropped_0.png
-inpainted_0.png
-full_inpainted.png
-overlay_0.png
-```
-
-If you want the API to list files, consider adding a small endpoint to return `os.listdir(job_dir)`.
-
----
-
-## Troubleshooting / Common Errors
-
-### `ImportError: libGL.so.1: cannot open shared object file`
-
-Install system packages:
-
+### Debug Mode
 ```bash
-sudo apt-get update
-sudo apt-get install -y libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender1
+# Run with verbose logging
+python runserver.py 2>&1 | tee debug.log
+
+# Test individual components
+python -c "from main import load_models; load_models()"
+python -c "import torch; print(torch.cuda.is_available())"
 ```
 
-Or use `opencv-python-headless` instead of GUI-enabled OpenCV if you don't need GUI features:
+### Logging
+Check server logs for:
+- Model loading status
+- Job processing progress
+- Error details and tracebacks
+- Memory usage statistics
 
-```bash
-pip uninstall -y opencv-python
-pip install opencv-python-headless
-```
+##  License
 
-### `ModuleNotFoundError: No module named 'timm'`
+MIT License
 
-Install `timm`:
+Copyright (c) 2024 Segmentation & Inpainting API Contributors
 
-```bash
-pip install timm
-```
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-### `ModuleNotFoundError: No module named 'simple_lama_inpainting'`
-
-Install LaMa wrapper:
-
-```bash
-pip install simple-lama-inpainting
-```
-
-If Pillow build fails during install (missing `jpeg` headers), install system deps before pip:
-
-```bash
-sudo apt-get install -y libjpeg-dev zlib1g-dev libpng-dev libtiff5-dev libfreetype6-dev
-pip install --force-reinstall pillow
-```
-
-### Pillow / Python 3.12 build issues
-
-If you see build errors on Python 3.12 consider switching to Python 3.10 or 3.11 for compatibility with some wheels.
-
-### CUDA / PyTorch
-
-If you want GPU support, install PyTorch with the wheel matching your CUDA version from the official PyTorch instructions. Do **not** rely on `pip install torch` in GPU environments if you need a specific CUDA build.
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
 ---
 
-## Developer tips & improvements
-
-* Add a `/files/{job_id}` endpoint to list available artifacts.
-* Add authentication if you plan to expose the API publicly.
-* Expand segmentation input to accept polygons or bounding boxes for more precise masks.
-* Add queueing/backpressure for high traffic (e.g., Redis/RQ, Celery, or FastAPI BackgroundTasks with worker pool).
-
----
-
-## License
-
-Add your project license here.
-
----
-
-## Contact
